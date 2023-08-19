@@ -223,14 +223,19 @@ if [ -z "$password" ]; then
 fi
 
 read -p "Enable recv_window_conn and recv_window? (y/n): " recv_window_enable
-config_json='{
-  "listen": ":'$port'",
+
+# Avoid using single quotes within the heredoc block
+config_json=$(cat <<EOL
+{
+  "listen": ":$port",
   "cert": "/root/hysteria/ca.crt",
   "key": "/root/hysteria/ca.key",
-  "obfs": "'$password'",
+  "obfs": "$password",
   "disable_mtu_discovery": true,
   "resolver": "https://223.5.5.5/dns-query"
-}'
+}
+EOL
+)
 if [ "$recv_window_enable" == "y" ]; then
   config_json=$(echo "$config_json" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
 fi
