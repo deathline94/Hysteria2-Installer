@@ -97,72 +97,72 @@ if [ -d "/root/hysteria" ]; then
             ;;
         2)
             
-	    # Modify
-	    cd /root/hysteria
+			# Modify
+			cd /root/hysteria
 
-	    # Get current values
-	    current_port=$(jq -r '.listen' config.json | cut -d':' -f2)
-	    current_password=$(jq -r '.obfs' config.json)
-	    echo ""
-	    read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
-	    echo ""
-	    [ -z "$new_port" ] && new_port=$current_port
-	    echo ""
-	    read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
-	    echo ""
-	    [ -z "$new_password" ] && new_password=$current_password
-	    echo ""
-	    read -p "Enable recv_window_conn and recv_window? (y/n, default is n): " new_recv_window_enable
-	    echo ""
-	    if [ -z "$new_recv_window_enable" ] || [ "$new_recv_window_enable" != "y" ]; then
-		     new_recv_window_enable="n"
-	    fi
+			# Get current values
+			current_port=$(jq -r '.listen' config.json | cut -d':' -f2)
+			current_password=$(jq -r '.obfs' config.json)
+			echo ""
+			read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
+			echo ""
+			[ -z "$new_port" ] && new_port=$current_port
+			echo ""
+			read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
+			echo ""
+			[ -z "$new_password" ] && new_password=$current_password
+			echo ""
+			read -p "Enable recv_window_conn and recv_window? (y/n, default is n): " new_recv_window_enable
+			echo ""
+			if [ -z "$new_recv_window_enable" ] || [ "$new_recv_window_enable" != "y" ]; then
+				new_recv_window_enable="n"
+			fi
 
-	    # Modify the config.json using jq based on the user's input
-	    jq ".listen = \":$new_port\"" config.json > temp.json && mv temp.json config.json
-	    jq ".obfs = \"$new_password\"" config.json > temp.json && mv temp.json config.json
+			# Modify the config.json using jq based on the user's input
+			jq ".listen = \":$new_port\"" config.json > temp.json && mv temp.json config.json
+			jq ".obfs = \"$new_password\"" config.json > temp.json && mv temp.json config.json
 
-	    if [ "$new_recv_window_enable" == "n" ]; then
-		  jq 'del(.recv_window_conn, .recv_window)' config.json > temp.json && mv temp.json config.json
-	    else
-		  jq '.recv_window_conn = 3407872 | .recv_window = 13631488' config.json > temp.json && mv temp.json config.json
-	    fi
+			if [ "$new_recv_window_enable" == "n" ]; then
+				jq 'del(.recv_window_conn, .recv_window)' config.json > temp.json && mv temp.json config.json
+			else
+				jq '.recv_window_conn = 3407872 | .recv_window = 13631488' config.json > temp.json && mv temp.json config.json
+			fi
 
-	    systemctl reload hysteria
-	    systemctl restart hysteria
-	    # Print client configs
-	    PUBLIC_IP=$(curl -s https://ipinfo.io/ip)
-	    read -p "Enter your upload speed (Mbps): " up_mbps
-	    read -p "Enter your download speed (Mbps): " down_mbps
-	    v2rayN_config='{
-	      "server": "'$PUBLIC_IP:$new_port'",
-	      "obfs": "'$new_password'",
-	      "protocol": "udp",
-	      "up_mbps": '$up_mbps',
-	      "down_mbps": '$down_mbps',
-	      "insecure": true,
-	      "socks5": {
-	        "listen": "127.0.0.1:10808"
-	      },
-	      "http": {
-		"listen": "127.0.0.1:10809"
-	      },
-	      "disable_mtu_discovery": true,
-	      "resolver": "https://223.5.5.5/dns-query"
-	    }'
-	    if [ "$new_recv_window_enable" == "y" ]; then
-	    v2rayN_config=$(echo "$v2rayN_config" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
-	    fi
+			systemctl reload hysteria
+			systemctl restart hysteria
+			# Print client configs
+			PUBLIC_IP=$(curl -s https://ipinfo.io/ip)
+			read -p "Enter your upload speed (Mbps): " up_mbps
+			read -p "Enter your download speed (Mbps): " down_mbps
+			v2rayN_config='{
+			  "server": "'$PUBLIC_IP:$new_port'",
+			  "obfs": "'$new_password'",
+			  "protocol": "udp",
+			  "up_mbps": '$up_mbps',
+			  "down_mbps": '$down_mbps',
+			  "insecure": true,
+			  "socks5": {
+			    "listen": "127.0.0.1:10808"
+			  },
+			  "http": {
+				"listen": "127.0.0.1:10809"
+			  },
+			  "disable_mtu_discovery": true,
+			  "resolver": "https://223.5.5.5/dns-query"
+			}'
+			if [ "$new_recv_window_enable" == "y" ]; then
+				v2rayN_config=$(echo "$v2rayN_config" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
+			fi
 
-	    echo "v2rayN client config:"
-	    echo "$v2rayN_config" | jq .
-	    echo
+			echo "v2rayN client config:"
+			echo "$v2rayN_config" | jq .
+			echo
 
-	    nekobox_url="hysteria://$PUBLIC_IP:$new_port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$new_password"
-	    echo "NekoBox/NekoRay URL:"
-	    echo "$nekobox_url"
-	    exit 0
-	    ;;
+			nekobox_url="hysteria://$PUBLIC_IP:$new_port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$new_password"
+			echo "NekoBox/NekoRay URL:"
+			echo "$nekobox_url"
+			exit 0
+			;;
         3)
             # Uninstall
             rm -rf /root/hysteria
@@ -223,19 +223,14 @@ if [ -z "$password" ]; then
 fi
 
 read -p "Enable recv_window_conn and recv_window? (y/n): " recv_window_enable
-
-# Avoid using single quotes within the heredoc block
-config_json=$(cat <<EOL
-{
-  "listen": ":$port",
+config_json='{
+  "listen": ":'$port'",
   "cert": "/root/hysteria/ca.crt",
   "key": "/root/hysteria/ca.key",
-  "obfs": "$password",
+  "obfs": "'$password'",
   "disable_mtu_discovery": true,
   "resolver": "https://223.5.5.5/dns-query"
-}
-EOL
-)
+}'
 if [ "$recv_window_enable" == "y" ]; then
   config_json=$(echo "$config_json" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
 fi
