@@ -126,8 +126,7 @@ if [ -d "/root/hysteria" ]; then
             else
                 jq '.recv_window_conn = 3407872 | .recv_window = 13631488' config.json > temp.json && mv temp.json config.json
             fi
-
-            systemctl reload hysteria
+            systemctl daemon-reload
             systemctl restart hysteria
             # Print client configs
             PUBLIC_IP=$(curl -s https://ipinfo.io/ip)
@@ -266,7 +265,6 @@ EOL
 systemctl daemon-reload
 systemctl enable hysteria
 systemctl start hysteria
-systemctl reload hysteria
 systemctl restart hysteria
 
 # Step 7: Generate and print two client config files
