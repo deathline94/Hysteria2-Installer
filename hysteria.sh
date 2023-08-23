@@ -46,6 +46,8 @@ if [ -d "/root/hysteria" ]; then
         1)
             # Reinstall
             rm -rf /root/hysteria
+            systemctl stop hysteria
+            pkill -f hysteria-linux-amd64
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             ;;
@@ -123,6 +125,7 @@ if [ -d "/root/hysteria" ]; then
             # Uninstall
             rm -rf /root/hysteria
             systemctl stop hysteria
+            pkill -f hysteria-linux-amd64
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             echo "Hysteria uninstalled successfully!"
