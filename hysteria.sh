@@ -2,64 +2,17 @@
 
 # Function to print characters with delay
 print_with_delay() {
-    text=$1
-    delay=$2
+    text="$1"
+    delay="$2"
     for ((i = 0; i < ${#text}; i++)); do
         echo -n "${text:$i:1}"
         sleep $delay
     done
+    echo
 }
 
 # Introduction animation
-echo ""
-echo ""
-print_with_delay "H" 0.1
-print_with_delay "y" 0.1
-print_with_delay "s" 0.1
-print_with_delay "t" 0.1
-print_with_delay "e" 0.1
-print_with_delay "r" 0.1
-print_with_delay "i" 0.1
-print_with_delay "a" 0.1
-print_with_delay "-" 0.1
-print_with_delay "I" 0.1
-print_with_delay "n" 0.1
-print_with_delay "s" 0.1
-print_with_delay "t" 0.1
-print_with_delay "a" 0.1
-print_with_delay "l" 0.1
-print_with_delay "l" 0.1
-print_with_delay "e" 0.1
-print_with_delay "r" 0.1
-print_with_delay " " 0.1
-print_with_delay "b" 0.1
-print_with_delay "y" 0.1
-print_with_delay " " 0.1
-print_with_delay "D" 0.1
-print_with_delay "E" 0.1
-print_with_delay "A" 0.1
-print_with_delay "T" 0.1
-print_with_delay "H" 0.1
-print_with_delay "L" 0.1
-print_with_delay "I" 0.1
-print_with_delay "N" 0.1
-print_with_delay "E" 0.1
-print_with_delay " " 0.1
-print_with_delay "|" 0.1
-print_with_delay " " 0.1
-print_with_delay "@" 0.1
-print_with_delay "N" 0.1
-print_with_delay "a" 0.1
-print_with_delay "m" 0.1
-print_with_delay "e" 0.1
-print_with_delay "l" 0.1
-print_with_delay "e" 0.1
-print_with_delay "s" 0.1
-print_with_delay "G" 0.1
-print_with_delay "h" 0.1
-print_with_delay "o" 0.1
-print_with_delay "u" 0.1
-print_with_delay "l" 0.1
+print_with_delay "hysteria-installer by DEATHLINE | @NamelesGhoul" 0.1
 echo ""
 echo ""
 
@@ -68,8 +21,8 @@ install_required_packages() {
     REQUIRED_PACKAGES=("curl" "jq" "openssl")
     for pkg in "${REQUIRED_PACKAGES[@]}"; do
         if ! command -v $pkg &> /dev/null; then
-            apt-get update
-            apt-get install -y $pkg
+            apt-get update > /dev/null 2>&1
+            apt-get install -y $pkg > /dev/null 2>&1
         fi
     done
 }
@@ -91,7 +44,7 @@ if [ -d "/root/hysteria" ]; then
         1)
             # Reinstall
             rm -rf /root/hysteria
-            systemctl disable hysteria
+            systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             ;;
         2)
@@ -129,8 +82,9 @@ if [ -d "/root/hysteria" ]; then
             systemctl daemon-reload
             systemctl restart hysteria
             # Print client configs
-            PUBLIC_IP=$(curl -s https://ipinfo.io/ip)
+            PUBLIC_IP=$(curl -s https://api.ipify.org)
             read -p "Enter your upload speed (Mbps): " up_mbps
+            echo ""
             read -p "Enter your download speed (Mbps): " down_mbps
             v2rayN_config='{
               "server": "'$PUBLIC_IP:$new_port'",
@@ -158,16 +112,19 @@ if [ -d "/root/hysteria" ]; then
 
             nekobox_url="hysteria://$PUBLIC_IP:$new_port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$new_password"
             echo "NekoBox/NekoRay URL:"
+            echo ""
             echo "$nekobox_url"
+            echo ""
             exit 0
             ;;
         3)
             # Uninstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            systemctl disable hysteria
+            systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             echo "Hysteria uninstalled successfully!"
+            echo ""
             exit 0
             ;;
         *)
@@ -220,7 +177,9 @@ if [ -z "$password" ]; then
   password=$(tr -dc 'a-zA-Z0-9-@#$%^&+=_' < /dev/urandom | fold -w 8 | head -n 1)
 fi
 
+echo ""
 read -p "Enable recv_window_conn and recv_window? (y/n): " recv_window_enable
+echo ""
 config_json='{
   "listen": ":'$port'",
   "cert": "/root/hysteria/ca.crt",
@@ -249,26 +208,35 @@ else
 fi
 
 # Step 6: Create a system service
-cat <<EOL > /etc/systemd/system/hysteria.service
+cat > /etc/systemd/system/hysteria.service <<EOL
 [Unit]
 Description=Hysteria VPN Service
-After=network.target
+After=network.target nss-lookup.target
 
 [Service]
-ExecStart=/root/hysteria/$BINARY_NAME server 
+User=root
 WorkingDirectory=/root/hysteria
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+ExecStart=/root/hysteria/$BINARY_NAME server
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
+RestartSec=5
+LimitNOFILE=infinity
 
 [Install]
 WantedBy=multi-user.target
 EOL
+
+
+
 systemctl daemon-reload
-systemctl enable hysteria
+systemctl enable hysteria > /dev/null 2>&1
 systemctl start hysteria
 systemctl restart hysteria
 
 # Step 7: Generate and print two client config files
-PUBLIC_IP=$(curl -s https://ipinfo.io/ip)
+PUBLIC_IP=$(curl -s https://api.ipify.org)
 read -p "Enter your upload speed (Mbps): " up_mbps
 echo ""
 read -p "Enter your download speed (Mbps): " down_mbps
@@ -297,6 +265,7 @@ echo ""
 echo "$v2rayN_config"
 echo ""
 nekobox_url="hysteria://$PUBLIC_IP:$port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$password"
+echo ""
 echo "NekoBox/NekoRay URL:"
 echo ""
 echo "$nekobox_url"
