@@ -156,7 +156,7 @@ esac
 # Step 2: Download the binary
 mkdir -p /root/hysteria
 cd /root/hysteria
-wget "https://github.com/apernet/hysteria/releases/latest/download/$BINARY_NAME"
+wget -q "https://github.com/apernet/hysteria/releases/latest/download/$BINARY_NAME"
 chmod 755 "$BINARY_NAME"
 
 # Step 3: Create self-signed certs
