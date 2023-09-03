@@ -251,7 +251,7 @@ systemctl restart hysteria
 
 # Step 7: Generate and print client config files
 PUBLIC_IP=$(curl -s https://api.ipify.org)
-
+echo ""
 echo "v2rayN client config:"
 echo ""
 v2rayN_config="server: $PUBLIC_IP:$port
