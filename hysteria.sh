@@ -14,7 +14,7 @@ print_with_delay() {
 # Introduction animation
 echo ""
 echo ""
-print_with_delay "hysteria-installer by DEATHLINE | @NamelesGhoul" 0.1
+print_with_delay "hysteria2-installer by DEATHLINE | @NamelesGhoul" 0.1
 echo ""
 echo ""
 
@@ -52,13 +52,12 @@ if [ -d "/root/hysteria" ]; then
             rm /etc/systemd/system/hysteria.service
             ;;
         2)
-            
             # Modify
             cd /root/hysteria
 
             # Get current values
-            current_port=$(jq -r '.listen' config.json | cut -d':' -f2)
-            current_password=$(jq -r '.obfs' config.json)
+            current_port=$(grep 'listen:' config.yaml | cut -d':' -f2)
+            current_password=$(grep 'password:' config.yaml | cut -d':' -f2)
             echo ""
             read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
             echo ""
@@ -67,56 +66,53 @@ if [ -d "/root/hysteria" ]; then
             read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
             echo ""
             [ -z "$new_password" ] && new_password=$current_password
-            echo ""
-            read -p "Enable recv_window_conn and recv_window? (y/n, default is n): " new_recv_window_enable
-            echo ""
-            if [ -z "$new_recv_window_enable" ] || [ "$new_recv_window_enable" != "y" ]; then
-                new_recv_window_enable="n"
-            fi
 
-            # Modify the config.json using jq based on the user's input
-            jq ".listen = \":$new_port\"" config.json > temp.json && mv temp.json config.json
-            jq ".obfs = \"$new_password\"" config.json > temp.json && mv temp.json config.json
+            # Modify the config.yaml based on the user's input
+            sed -i "s/$current_port/$new_port/" config.yaml
+            sed -i "s/$current_password/$new_password/" config.yaml
 
-            if [ "$new_recv_window_enable" == "n" ]; then
-                jq 'del(.recv_window_conn, .recv_window)' config.json > temp.json && mv temp.json config.json
-            else
-                jq '.recv_window_conn = 3407872 | .recv_window = 13631488' config.json > temp.json && mv temp.json config.json
-            fi
             systemctl daemon-reload
             systemctl restart hysteria
+
             # Print client configs
             PUBLIC_IP=$(curl -s https://api.ipify.org)
-            read -p "Enter your upload speed (Mbps): " up_mbps
-            echo ""
-            read -p "Enter your download speed (Mbps): " down_mbps
-            v2rayN_config='{
-              "server": "'$PUBLIC_IP:$new_port'",
-              "obfs": "'$new_password'",
-              "protocol": "udp",
-              "up_mbps": '$up_mbps',
-              "down_mbps": '$down_mbps',
-              "insecure": true,
-              "socks5": {
-                "listen": "127.0.0.1:10808"
-              },
-              "http": {
-                "listen": "127.0.0.1:10809"
-              },
-              "disable_mtu_discovery": true,
-              "resolver": "https://223.5.5.5/dns-query"
-            }'
-            if [ "$new_recv_window_enable" == "y" ]; then
-                v2rayN_config=$(echo "$v2rayN_config" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
-            fi
 
             echo "v2rayN client config:"
-            echo "$v2rayN_config" | jq .
-            echo
-
-            nekobox_url="hysteria://$PUBLIC_IP:$new_port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$new_password"
-            echo "NekoBox/NekoRay URL:"
+            v2rayN_config="server: $PUBLIC_IP:$new_port
+auth: $new_password
+transport:
+  type: udp
+  udp:
+    hopInterval: 30s
+obfs:
+  type: salamander
+  salamander:
+    password: $new_password
+tls:
+  sni: google.com
+  insecure: true
+bandwidth:
+  up: 100 mbps
+  down: 100 mbps
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 30s
+  keepAlivePeriod: 10s
+  disablePathMTUDiscovery: false
+fastOpen: true
+lazy: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
+            echo "$v2rayN_config"
             echo ""
+
+            echo "NekoBox/NekoRay URL:"
+            nekobox_url="hysteria2://$new_password@$PUBLIC_IP:$new_port/?insecure=1&obfs=salamander&obfs-password=$new_password&sni=google.com"
             echo "$nekobox_url"
             echo ""
             exit 0
@@ -141,6 +137,7 @@ fi
 
 # Install required packages if not already installed
 install_required_packages
+
 # Step 1: Check OS and architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -171,46 +168,60 @@ openssl req -new -x509 -days 36500 -key ca.key -out ca.crt -subj "/CN=bing.com"
 # Step 4: Prompt user for input
 echo ""
 read -p "Enter a port (or press enter for a random port): " port
-echo ""
-if [ -z "$port" ]; then
-  port=$((RANDOM + 10000))
-fi
+[ -z "$port" ] && port=$((RANDOM + 10000))
+
 echo ""
 read -p "Enter a password (or press enter for a random password): " password
-echo ""
-if [ -z "$password" ]; then
-  password=$(tr -dc 'a-zA-Z0-9-@#$%^&+=_' < /dev/urandom | fold -w 8 | head -n 1)
-fi
+[ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9-@#$%^&+=_' < /dev/urandom | fold -w 8 | head -n 1)
 
-echo ""
-read -p "Enable recv_window_conn and recv_window? (y/n): " recv_window_enable
-echo ""
-config_json='{
-  "listen": ":'$port'",
-  "cert": "/root/hysteria/ca.crt",
-  "key": "/root/hysteria/ca.key",
-  "obfs": "'$password'",
-  "disable_mtu_discovery": true,
-  "resolver": "https://223.5.5.5/dns-query"
-}'
-if [ "$recv_window_enable" == "y" ]; then
-  config_json=$(echo "$config_json" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
-fi
-echo "$config_json" > config.json
+# Create new config.yaml template based on your requirement
+config_yaml="listen: :$port
+tls:
+  cert: /root/hysteria/ca.crt
+  key: /root/hysteria/ca.key
+obfs:
+  type: salamander
+  salamander:
+    password: $password
+auth:
+  type: password
+  password: $password
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 60s
+  maxIncomingStreams: 1024
+  disablePathMTUDiscovery: false
+bandwidth:
+  up: 1 gbps
+  down: 1 gbps
+ignoreClientBandwidth: false
+disableUDP: false
+udpIdleTimeout: 60s
+resolver:
+  type: udp
+  tcp:
+    addr: 8.8.8.8:53
+    timeout: 4s
+  udp:
+    addr: 8.8.4.4:53
+    timeout: 4s
+  tls:
+    addr: 1.1.1.1:853
+    timeout: 10s
+    sni: cloudflare-dns.com
+    insecure: false
+  https:
+    addr: 1.1.1.1:443
+    timeout: 10s
+    sni: cloudflare-dns.com
+    insecure: false"
+echo "$config_yaml" > config.yaml
 
 # Step 5: Run the binary and check the log
-./"$BINARY_NAME" server > hysteria.log &
-sleep 2
-if grep -q "Server up and running" hysteria.log; then
-  echo ""
-  echo "Server started successfully."
-  echo ""
-else
-  echo ""
-  echo "Error installing, check log file."
-  echo ""
-  exit 1
-fi
+/root/hysteria/./hysteria-linux-amd64 server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
 
 # Step 6: Create a system service
 cat > /etc/systemd/system/hysteria.service <<EOL
@@ -223,7 +234,7 @@ User=root
 WorkingDirectory=/root/hysteria
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-ExecStart=/root/hysteria/$BINARY_NAME server
+ExecStart=/root/hysteria/./hysteria-linux-amd64 server -c /root/hysteria/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
@@ -233,45 +244,53 @@ LimitNOFILE=infinity
 WantedBy=multi-user.target
 EOL
 
-
-
 systemctl daemon-reload
 systemctl enable hysteria > /dev/null 2>&1
 systemctl start hysteria
 systemctl restart hysteria
 
-# Step 7: Generate and print two client config files
+# Step 7: Generate and print client config files
 PUBLIC_IP=$(curl -s https://api.ipify.org)
-read -p "Enter your upload speed (Mbps): " up_mbps
-echo ""
-read -p "Enter your download speed (Mbps): " down_mbps
-echo ""
-v2rayN_config='{
-  "server": "'$PUBLIC_IP:$port'",
-  "obfs": "'$password'",
-  "protocol": "udp",
-  "up_mbps": '$up_mbps',
-  "down_mbps": '$down_mbps',
-  "insecure": true,
-  "socks5": {
-    "listen": "127.0.0.1:10808"
-  },
-  "http": {
-    "listen": "127.0.0.1:10809"
-  },
-  "disable_mtu_discovery": true,
-  "resolver": "https://223.5.5.5/dns-query"
-}'
-if [ "$recv_window_enable" == "y" ]; then
-  v2rayN_config=$(echo "$v2rayN_config" | jq '. + {"recv_window_conn": 3407872, "recv_window": 13631488}')
-fi
+
 echo "v2rayN client config:"
+echo ""
+v2rayN_config="server: $PUBLIC_IP:$port
+auth: $password
+transport:
+  type: udp
+  udp:
+    hopInterval: 30s
+obfs:
+  type: salamander
+  salamander:
+    password: $password
+tls:
+  sni: google.com
+  insecure: true
+bandwidth:
+  up: 100 mbps
+  down: 100 mbps
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 30s
+  keepAlivePeriod: 10s
+  disablePathMTUDiscovery: false
+fastOpen: true
+lazy: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
 echo ""
 echo "$v2rayN_config"
 echo ""
-nekobox_url="hysteria://$PUBLIC_IP:$port/?insecure=1&upmbps=$up_mbps&downmbps=$down_mbps&obfs=xplus&obfsParam=$password"
-echo ""
 echo "NekoBox/NekoRay URL:"
+echo ""
+nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=google.com"
 echo ""
 echo "$nekobox_url"
 echo ""
+
