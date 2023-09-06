@@ -47,7 +47,7 @@ if [ -d "/root/hysteria" ]; then
             # Reinstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            pkill -f 'hysteria'
+            pkill -f 'hysteria*'
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             ;;
@@ -265,7 +265,6 @@ EOL
 systemctl daemon-reload
 systemctl enable hysteria > /dev/null 2>&1
 systemctl start hysteria
-systemctl restart hysteria
 
 # Step 7: Generate and print client config files
 PUBLIC_IP=$(curl -s https://api.ipify.org)
