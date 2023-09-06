@@ -89,7 +89,7 @@ obfs:
   salamander:
     password: $new_password
 tls:
-  sni: google.com
+  sni: bing.com
   insecure: true
 bandwidth:
   up: 100 mbps
@@ -218,6 +218,12 @@ resolver:
     timeout: 10s
     sni: cloudflare-dns.com
     insecure: false"
+  masquerade:
+  type: proxy
+  proxy:
+    url: https://speedtest.net 
+    rewriteHost: true 
+    
 echo "$config_yaml" > config.yaml
 
 # Step 5: Run the binary and check the log
@@ -265,7 +271,7 @@ obfs:
   salamander:
     password: $password
 tls:
-  sni: google.com
+  sni: bing.com
   insecure: true
 bandwidth:
   up: 100 mbps
