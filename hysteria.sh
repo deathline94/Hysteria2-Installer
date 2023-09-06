@@ -54,7 +54,7 @@ if [ -d "/root/hysteria" ]; then
         2)
             # Modify
             cd /root/hysteria
-
+            
             # Get the current port and password from config.yaml
             current_port=$(awk -F': ' '/listen:/ {print $2}' config.yaml | tr -d '[:space:]')
             current_password=$(awk -F': ' '/password:/ {print $2}' config.yaml | tr -d '[:space:]')
@@ -77,13 +77,12 @@ if [ -d "/root/hysteria" ]; then
             
             # Modify the config.yaml based on the user's input
             sed -i "s/\(listen: :\)$current_port_escaped/\1$new_port_escaped/" config.yaml
-            sed -i "s/\(password: \)$current_password_escaped/\1$new_password_escaped/" config.yaml
+            sed -i "s/\(password: \)$current_password_escaped/\1$new_password_escaped/g" config.yaml
 
-            
-            pkill -f 'hysteria'
+            systemctl stop hysteria
+            pkill -f 'hysteria*'
             systemctl daemon-reload
             systemctl start hysteria
-            systemctl restart hysteria
 
             # Print client configs
             PUBLIC_IP=$(curl -s https://api.ipify.org)
