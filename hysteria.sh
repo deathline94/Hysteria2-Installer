@@ -56,7 +56,7 @@ if [ -d "/root/hysteria" ]; then
             cd /root/hysteria
             
             # Get the current port and password from config.yaml
-            current_port=$(grep -m 1 'listen:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
+            current_port=$(grep -m 1 'listen:' config.yaml | awk -F': ' '{print $2}' | awk -F':' '{print $2}' | tr -d '[:space:]')
             current_password=$(grep -m 1 'password:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
             
             # Prompt the user for a new port and password
@@ -72,6 +72,7 @@ if [ -d "/root/hysteria" ]; then
             sed -i "s|listen: :${current_port}|listen: :${new_port}|" config.yaml
             sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
             sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
+
 
             
             # Kill the existing hysteria process, reload systemd and restart the hysteria service
