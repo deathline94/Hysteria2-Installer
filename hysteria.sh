@@ -218,11 +218,11 @@ resolver:
     timeout: 10s
     sni: cloudflare-dns.com
     insecure: false
-  masquerade:
+masquerade:
   type: proxy
   proxy:
-    url: https://speedtest.net 
-    rewriteHost: true" 
+    url: https://speedtest.net
+    rewriteHost: true"
     
 echo "$config_yaml" > config.yaml
 
