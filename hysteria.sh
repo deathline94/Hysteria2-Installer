@@ -55,9 +55,11 @@ if [ -d "/root/hysteria" ]; then
             # Modify
             cd /root/hysteria
 
-            # Get current values
-            current_port=$(grep 'listen:' config.yaml | cut -d':' -f2)
-            current_password=$(grep 'password:' config.yaml | cut -d':' -f2)
+            # Get the current port and password from config.yaml
+            current_port=$(awk -F': ' '/listen:/ {print $2}' config.yaml | tr -d '[:space:]')
+            current_password=$(awk -F': ' '/password:/ {print $2}' config.yaml | tr -d '[:space:]')
+            
+            # Prompt the user for a new port and password
             echo ""
             read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
             echo ""
@@ -66,12 +68,21 @@ if [ -d "/root/hysteria" ]; then
             read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
             echo ""
             [ -z "$new_password" ] && new_password=$current_password
-
+            
+            # Escape any special characters in the variables
+            current_port_escaped=$(printf '%s\n' "$current_port" | sed 's:[][\/.^$*]:\\&:g')
+            new_port_escaped=$(printf '%s\n' "$new_port" | sed 's:[][\/.^$*]:\\&:g')
+            current_password_escaped=$(printf '%s\n' "$current_password" | sed 's:[][\/.^$*]:\\&:g')
+            new_password_escaped=$(printf '%s\n' "$new_password" | sed 's:[][\/.^$*]:\\&:g')
+            
             # Modify the config.yaml based on the user's input
-            sed -i "s/$current_port/$new_port/" config.yaml
-            sed -i "s/$current_password/$new_password/" config.yaml
+            sed -i "s/\(listen: :\)$current_port_escaped/\1$new_port_escaped/" config.yaml
+            sed -i "s/\(password: \)$current_password_escaped/\1$new_password_escaped/" config.yaml
 
+            
+            pkill -f 'hysteria'
             systemctl daemon-reload
+            systemctl start hysteria
             systemctl restart hysteria
 
             # Print client configs
@@ -82,8 +93,6 @@ if [ -d "/root/hysteria" ]; then
 auth: $new_password
 transport:
   type: udp
-  udp:
-    hopInterval: 30s
 obfs:
   type: salamander
   salamander:
@@ -99,8 +108,8 @@ quic:
   maxStreamReceiveWindow: 8388608
   initConnReceiveWindow: 20971520
   maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 30s
-  keepAlivePeriod: 10s
+  maxIdleTimeout: 60s
+  keepAlivePeriod: 60s
   disablePathMTUDiscovery: false
 fastOpen: true
 lazy: true
@@ -273,8 +282,6 @@ v2rayN_config="server: $PUBLIC_IP:$port
 auth: $password
 transport:
   type: udp
-  udp:
-    hopInterval: 30s
 obfs:
   type: salamander
   salamander:
@@ -290,8 +297,8 @@ quic:
   maxStreamReceiveWindow: 8388608
   initConnReceiveWindow: 20971520
   maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 30s
-  keepAlivePeriod: 10s
+  maxIdleTimeout: 60s
+  keepAlivePeriod: 60s
   disablePathMTUDiscovery: false
 fastOpen: true
 lazy: true
