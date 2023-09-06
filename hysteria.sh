@@ -47,7 +47,7 @@ if [ -d "/root/hysteria" ]; then
             # Reinstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            pkill -f $BINARY_NAME
+            pkill -f 'hysteria'
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             ;;
@@ -121,7 +121,7 @@ http:
             # Uninstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            pkill -f $BINARY_NAME
+            pkill -f 'hysteria'
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             echo "Hysteria uninstalled successfully!"
