@@ -54,7 +54,7 @@ if [ -d "/root/hysteria" ]; then
         2)
             # Modify
             cd /root/hysteria
-                        
+            
             # Get the current port and password from config.yaml
             current_port=$(grep -m 1 'listen:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
             current_password=$(grep -m 1 'password:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
@@ -69,7 +69,7 @@ if [ -d "/root/hysteria" ]; then
             echo ""
             
             # Update the port and password in config.yaml
-            awk -v port="$new_port" -F': ' '/listen:/ {$2=": " port}1' OFS=': ' config.yaml > config.yaml.tmp && mv config.yaml.tmp config.yaml
+            sed -i "s|listen: :${current_port}|listen: :${new_port}|" config.yaml
             sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
             sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
 
