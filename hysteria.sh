@@ -217,12 +217,12 @@ resolver:
     addr: 1.1.1.1:443
     timeout: 10s
     sni: cloudflare-dns.com
-    insecure: false"
+    insecure: false
   masquerade:
   type: proxy
   proxy:
     url: https://speedtest.net 
-    rewriteHost: true 
+    rewriteHost: true" 
     
 echo "$config_yaml" > config.yaml
 
