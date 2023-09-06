@@ -20,7 +20,7 @@ echo ""
 
 # Check for and install required packages
 install_required_packages() {
-    REQUIRED_PACKAGES=("curl" "jq" "openssl")
+    REQUIRED_PACKAGES=("curl" "openssl")
     for pkg in "${REQUIRED_PACKAGES[@]}"; do
         if ! command -v $pkg &> /dev/null; then
             apt-get update > /dev/null 2>&1
@@ -47,7 +47,7 @@ if [ -d "/root/hysteria" ]; then
             # Reinstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            pkill -f hysteria-linux-amd64
+            pkill -f $BINARY_NAME
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             ;;
@@ -89,7 +89,7 @@ obfs:
   salamander:
     password: $new_password
 tls:
-  sni: google.com
+  sni: bing.com
   insecure: true
 bandwidth:
   up: 100 mbps
@@ -121,7 +121,7 @@ http:
             # Uninstall
             rm -rf /root/hysteria
             systemctl stop hysteria
-            pkill -f hysteria-linux-amd64
+            pkill -f $BINARY_NAME
             systemctl disable hysteria > /dev/null 2>&1
             rm /etc/systemd/system/hysteria.service
             echo "Hysteria uninstalled successfully!"
@@ -148,12 +148,21 @@ case "$OS" in
   Linux)
     case "$ARCH" in
       x86_64) BINARY_NAME="hysteria-linux-amd64";;
-      # Add more architectures if needed
+      386) BINARY_NAME="hysteria-linux-386";;
+      amd64) BINARY_NAME="hysteria-linux-amd64";;
+      arm64) BINARY_NAME="hysteria-linux-arm64";;
+      mipsle) BINARY_NAME="hysteria-linux-mipsle";;
+      s390x) BINARY_NAME="hysteria-linux-s390x";;
+      amd64-avx) BINARY_NAME="hysteria-linux-amd64-avx";;
+      arm) BINARY_NAME="hysteria-linux-arm";;
+      armv5) BINARY_NAME="hysteria-linux-armv5";;
+      mipsle-sf) BINARY_NAME="hysteria-linux-mipsle-sf";;
       *) echo "Unsupported architecture"; exit 1;;
     esac;;
   # Add more OS checks if needed
   *) echo "Unsupported OS"; exit 1;;
 esac
+
 
 # Step 2: Download the binary
 mkdir -p /root/hysteria
@@ -172,7 +181,7 @@ read -p "Enter a port (or press enter for a random port): " port
 
 echo ""
 read -p "Enter a password (or press enter for a random password): " password
-[ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9-@#$%^&+=_' < /dev/urandom | fold -w 8 | head -n 1)
+[ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 8 | head -n 1)
 
 # Create new config.yaml template based on your requirement
 config_yaml="listen: :$port
@@ -197,7 +206,7 @@ quic:
 bandwidth:
   up: 1 gbps
   down: 1 gbps
-ignoreClientBandwidth: false
+ignoreClientBandwidth: true
 disableUDP: false
 udpIdleTimeout: 60s
 resolver:
@@ -217,11 +226,17 @@ resolver:
     addr: 1.1.1.1:443
     timeout: 10s
     sni: cloudflare-dns.com
-    insecure: false"
+    insecure: false
+masquerade:
+  type: proxy
+  proxy:
+    url: https://speedtest.net
+    rewriteHost: true"
+    
 echo "$config_yaml" > config.yaml
 
 # Step 5: Run the binary and check the log
-/root/hysteria/./hysteria-linux-amd64 server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
+/root/hysteria/./$BINARY_NAME server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
 
 # Step 6: Create a system service
 cat > /etc/systemd/system/hysteria.service <<EOL
@@ -234,8 +249,8 @@ User=root
 WorkingDirectory=/root/hysteria
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-ExecStart=/root/hysteria/./hysteria-linux-amd64 server -c /root/hysteria/config.yaml
-ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/root/hysteria/./$BINARY_NAME server -c /root/hysteria/config.yaml
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=5
 LimitNOFILE=infinity
@@ -265,7 +280,7 @@ obfs:
   salamander:
     password: $password
 tls:
-  sni: google.com
+  sni: bing.com
   insecure: true
 bandwidth:
   up: 100 mbps
@@ -289,7 +304,7 @@ echo "$v2rayN_config"
 echo ""
 echo "NekoBox/NekoRay URL:"
 echo ""
-nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=google.com"
+nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=bing.com"
 echo ""
 echo "$nekobox_url"
 echo ""
