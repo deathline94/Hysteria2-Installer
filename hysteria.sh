@@ -56,30 +56,24 @@ if [ -d "/root/hysteria" ]; then
             cd /root/hysteria
             
             # Get the current port and password from config.yaml
-            current_port=$(awk -F': ' '/listen:/ {print $2}' config.yaml | tr -d '[:space:]')
-            current_password=$(awk -F': ' '/password:/ {print $2}' config.yaml | tr -d '[:space:]')
+            current_port=$(grep -m 1 'listen:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
+            current_password=$(grep -m 1 'password:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
             
             # Prompt the user for a new port and password
             echo ""
             read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
-            echo ""
             [ -z "$new_port" ] && new_port=$current_port
             echo ""
             read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
-            echo ""
             [ -z "$new_password" ] && new_password=$current_password
+            echo ""
             
-            # Escape any special characters in the variables
-            current_port_escaped=$(printf '%s\n' "$current_port" | sed 's:[][\/.^$*]:\\&:g')
-            new_port_escaped=$(printf '%s\n' "$new_port" | sed 's:[][\/.^$*]:\\&:g')
-            current_password_escaped=$(printf '%s\n' "$current_password" | sed 's:[][\/.^$*]:\\&:g')
-            new_password_escaped=$(printf '%s\n' "$new_password" | sed 's:[][\/.^$*]:\\&:g')
+            # Update the port and password in config.yaml
+            sed -i "0,/listen: :${current_port}/s//listen: :${new_port}/" config.yaml
+            sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
+            sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
             
-            # Modify the config.yaml based on the user's input
-            sed -i "s/\(listen: :\)$current_port_escaped/\1$new_port_escaped/" config.yaml
-            sed -i "s/\(password: \)$current_password_escaped/\1$new_password_escaped/g" config.yaml
-
-            systemctl stop hysteria
+            # Kill the existing hysteria process, reload systemd and restart the hysteria service
             pkill -f 'hysteria*'
             systemctl daemon-reload
             systemctl start hysteria
