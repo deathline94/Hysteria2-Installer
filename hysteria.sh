@@ -89,7 +89,7 @@ obfs:
   salamander:
     password: $new_password
 tls:
-  sni: bing.com
+  sni: google.com
   insecure: true
 bandwidth:
   up: 100 mbps
@@ -218,7 +218,6 @@ resolver:
     timeout: 10s
     sni: cloudflare-dns.com
     insecure: false"
-    
 echo "$config_yaml" > config.yaml
 
 # Step 5: Run the binary and check the log
@@ -266,7 +265,7 @@ obfs:
   salamander:
     password: $password
 tls:
-  sni: bing.com
+  sni: google.com
   insecure: true
 bandwidth:
   up: 100 mbps
@@ -294,4 +293,3 @@ nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&obfs=salamander&
 echo ""
 echo "$nekobox_url"
 echo ""
-
