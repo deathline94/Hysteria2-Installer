@@ -71,7 +71,6 @@ if [ -d "/root/hysteria" ]; then
             # Update the port and password in config.yaml
             sed -i "s/listen: :${current_port}/listen: :${new_port}/" config.yaml
             sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
-            sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
 
             
             # Kill the existing hysteria process, reload systemd and restart the hysteria service
@@ -87,10 +86,6 @@ if [ -d "/root/hysteria" ]; then
 auth: $new_password
 transport:
   type: udp
-obfs:
-  type: salamander
-  salamander:
-    password: $new_password
 tls:
   sni: bing.com
   insecure: true
@@ -115,7 +110,7 @@ http:
             echo ""
 
             echo "NekoBox/NekoRay URL:"
-            nekobox_url="hysteria2://$new_password@$PUBLIC_IP:$new_port/?insecure=1&obfs=salamander&obfs-password=$new_password&sni=google.com"
+            nekobox_url="hysteria2://$new_password@$PUBLIC_IP:$new_port/?insecure=1&sni=bing.com"
             echo "$nekobox_url"
             echo ""
             exit 0
@@ -184,17 +179,13 @@ read -p "Enter a port (or press enter for a random port): " port
 
 echo ""
 read -p "Enter a password (or press enter for a random password): " password
-[ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 8 | head -n 1)
+[ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 16 | head -n 1)
 
 # Create new config.yaml template based on your requirement
 config_yaml="listen: :$port
 tls:
   cert: /root/hysteria/ca.crt
   key: /root/hysteria/ca.key
-obfs:
-  type: salamander
-  salamander:
-    password: $password
 auth:
   type: password
   password: $password
@@ -209,7 +200,7 @@ quic:
 bandwidth:
   up: 1 gbps
   down: 1 gbps
-ignoreClientBandwidth: true
+ignoreClientBandwidth: false
 disableUDP: false
 udpIdleTimeout: 60s
 resolver:
@@ -230,16 +221,11 @@ resolver:
     timeout: 10s
     sni: cloudflare-dns.com
     insecure: false
-masquerade:
-  type: proxy
-  proxy:
-    url: https://speedtest.net
-    rewriteHost: true"
     
 echo "$config_yaml" > config.yaml
 
 # Step 5: Run the binary and check the log
-/root/hysteria/./$BINARY_NAME server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
+/root/hysteria/$BINARY_NAME server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
 
 # Step 6: Create a system service
 cat > /etc/systemd/system/hysteria.service <<EOL
@@ -252,7 +238,7 @@ User=root
 WorkingDirectory=/root/hysteria
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-ExecStart=/root/hysteria/./$BINARY_NAME server -c /root/hysteria/config.yaml
+ExecStart=/root/hysteria/$BINARY_NAME server -c /root/hysteria/config.yaml
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=5
@@ -275,10 +261,6 @@ v2rayN_config="server: $PUBLIC_IP:$port
 auth: $password
 transport:
   type: udp
-obfs:
-  type: salamander
-  salamander:
-    password: $password
 tls:
   sni: bing.com
   insecure: true
@@ -304,7 +286,7 @@ echo "$v2rayN_config"
 echo ""
 echo "NekoBox/NekoRay URL:"
 echo ""
-nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&obfs=salamander&obfs-password=$password&sni=bing.com"
+nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&sni=bing.com"
 echo ""
 echo "$nekobox_url"
 echo ""
