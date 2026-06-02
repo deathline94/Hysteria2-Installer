@@ -6,7 +6,7 @@ print_with_delay() {
     delay="$2"
     for ((i = 0; i < ${#text}; i++)); do
         echo -n "${text:$i:1}"
-        sleep $delay
+        sleep "$delay"
     done
     echo
 }
@@ -18,90 +18,85 @@ print_with_delay "hysteria2-installer by DEATHLINE | @NamelesGhoul" 0.1
 echo ""
 echo ""
 
+# Ensure root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
+
 # Check for and install required packages
 install_required_packages() {
-    REQUIRED_PACKAGES=("curl" "openssl")
+    REQUIRED_PACKAGES=("curl" "certbot")
     for pkg in "${REQUIRED_PACKAGES[@]}"; do
-        if ! command -v $pkg &> /dev/null; then
+        if ! command -v "$pkg" &> /dev/null; then
             apt-get update > /dev/null 2>&1
-            apt-get install -y $pkg > /dev/null 2>&1
+            apt-get install -y "$pkg" > /dev/null 2>&1
         fi
     done
 }
 
-# Check if the directory /root/hysteria already exists
-if [ -d "/root/hysteria" ]; then
+# Function to update Hysteria binary
+update_hysteria() {
+    echo "Updating Hysteria to the latest version..."
+    bash <(curl -fsSL https://get.hy2.sh/) > /dev/null 2>&1
+    systemctl restart hysteria-server
+    echo "Hysteria updated successfully!"
+}
+
+# Check if the directory /etc/hysteria already exists
+if [ -d "/etc/hysteria" ] && [ -f "/etc/hysteria/config.yaml" ]; then
     echo "Hysteria seems to be already installed."
     echo ""
     echo "Choose an option:"
     echo ""
     echo "1) Reinstall"
     echo ""
-    echo "2) Modify"
+    echo "2) Modify (Change port/password)"
     echo ""
-    echo "3) Uninstall"
+    echo "3) Update Hysteria"
     echo ""
-    read -p "Enter your choice: " choice
+    echo "4) Uninstall"
+    echo ""
+    read -r -p "Enter your choice: " choice
     case $choice in
         1)
             # Reinstall
-            rm -rf /root/hysteria
-            systemctl stop hysteria
-            pkill -f 'hysteria*'
-            systemctl disable hysteria > /dev/null 2>&1
-            rm /etc/systemd/system/hysteria.service
+            systemctl stop hysteria-server
+            systemctl disable hysteria-server > /dev/null 2>&1
+            rm -rf /etc/hysteria
+            rm -rf /etc/systemd/system/hysteria-server.service.d
+            systemctl daemon-reload
             ;;
         2)
             # Modify
-            cd /root/hysteria
-        
-            # Get the current port and password from config.yaml
-            current_port=$(grep -oP 'listen: :\K\d+' config.yaml)
-            current_password=$(grep -m 1 'password:' config.yaml | awk -F': ' '{print $2}' | tr -d '[:space:]')
-        
-            # Prompt the user for a new port and password
+            # Read current settings from config
+            current_port=$(grep -oP 'listen: :\K\d+' /etc/hysteria/config.yaml || echo "443")
+            current_password=$(grep -m 1 'password:' /etc/hysteria/config.yaml | awk '{print $2}' || echo "random")
+            current_domain=$(grep -oP 'cert: /etc/letsencrypt/live/\K[^/]+' /etc/hysteria/config.yaml || echo "example.com")
+            
             echo ""
-            read -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
+            read -r -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
             [ -z "$new_port" ] && new_port=$current_port
             echo ""
-            read -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
+            read -r -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
             [ -z "$new_password" ] && new_password=$current_password
             echo ""
         
             # Update the port and password in config.yaml
-            sed -i "s/listen: :${current_port}/listen: :${new_port}/" config.yaml
-            sed -i "0,/password: ${current_password}/s//password: ${new_password}/" config.yaml
-
+            sed -i "s/listen: :${current_port}/listen: :${new_port}/" /etc/hysteria/config.yaml
+            sed -i "s/password: ${current_password}/password: ${new_password}/" /etc/hysteria/config.yaml
             
-            # Kill the existing hysteria process, reload systemd and restart the hysteria service
-            pkill -f 'hysteria*'
-            systemctl daemon-reload
-            systemctl start hysteria
+            # Restart the hysteria service
+            systemctl restart hysteria-server
 
             # Print client configs
-            PUBLIC_IP=$(curl -s https://api.ipify.org)
-
             echo "v2rayN client config:"
-            v2rayN_config="server: $PUBLIC_IP:$new_port
+            v2rayN_config="server: $current_domain:$new_port
 auth: $new_password
-transport:
-  type: udp
 tls:
-  sni: bing.com
-  insecure: true
-bandwidth:
-  up: 100 mbps
-  down: 100 mbps
-quic:
-  initStreamReceiveWindow: 8388608
-  maxStreamReceiveWindow: 8388608
-  initConnReceiveWindow: 20971520
-  maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 60s
-  keepAlivePeriod: 60s
-  disablePathMTUDiscovery: false
+  sni: $current_domain
+  insecure: false
 fastOpen: true
-lazy: true
 socks5:
   listen: 127.0.0.1:10808
 http:
@@ -110,18 +105,26 @@ http:
             echo ""
 
             echo "NekoBox/NekoRay URL:"
-            nekobox_url="hysteria2://$new_password@$PUBLIC_IP:$new_port/?insecure=1&sni=bing.com"
+            nekobox_url="hysteria2://$new_password@$current_domain:$new_port/?insecure=0&sni=$current_domain#Hysteria2-$((RANDOM % 9000 + 1000))"
             echo "$nekobox_url"
             echo ""
             exit 0
             ;;
         3)
+            # Update
+            update_hysteria
+            exit 0
+            ;;
+        4)
             # Uninstall
-            rm -rf /root/hysteria
-            systemctl stop hysteria
-            pkill -f 'hysteria'
-            systemctl disable hysteria > /dev/null 2>&1
-            rm /etc/systemd/system/hysteria.service
+            systemctl stop hysteria-server
+            systemctl disable hysteria-server > /dev/null 2>&1
+            rm -rf /etc/hysteria
+            rm -f /usr/local/bin/hysteria
+            rm -f /etc/systemd/system/hysteria-server.service
+            rm -f /etc/systemd/system/hysteria-server@.service
+            rm -rf /etc/systemd/system/hysteria-server.service.d
+            systemctl daemon-reload
             echo "Hysteria uninstalled successfully!"
             echo ""
             exit 0
@@ -136,157 +139,169 @@ fi
 # Install required packages if not already installed
 install_required_packages
 
-# Step 1: Check OS and architecture
-OS="$(uname -s)"
-ARCH="$(uname -m)"
+# Step 1: Install Hysteria using official script
+echo "Installing Hysteria..."
+bash <(curl -fsSL https://get.hy2.sh/) > /dev/null 2>&1
 
-# Determine binary name
-BINARY_NAME=""
-case "$OS" in
-  Linux)
-    case "$ARCH" in
-      x86_64) BINARY_NAME="hysteria-linux-amd64";;
-      386) BINARY_NAME="hysteria-linux-386";;
-      amd64) BINARY_NAME="hysteria-linux-amd64";;
-      arm64) BINARY_NAME="hysteria-linux-arm64";;
-      mipsle) BINARY_NAME="hysteria-linux-mipsle";;
-      s390x) BINARY_NAME="hysteria-linux-s390x";;
-      amd64-avx) BINARY_NAME="hysteria-linux-amd64-avx";;
-      arm) BINARY_NAME="hysteria-linux-arm";;
-      armv5) BINARY_NAME="hysteria-linux-armv5";;
-      mipsle-sf) BINARY_NAME="hysteria-linux-mipsle-sf";;
-      *) echo "Unsupported architecture"; exit 1;;
-    esac;;
-  # Add more OS checks if needed
-  *) echo "Unsupported OS"; exit 1;;
-esac
-
-
-# Step 2: Download the binary
-mkdir -p /root/hysteria
-cd /root/hysteria
-wget -q "https://github.com/apernet/hysteria/releases/latest/download/$BINARY_NAME"
-chmod 755 "$BINARY_NAME"
-
-# Step 3: Create self-signed certs
-openssl ecparam -genkey -name prime256v1 -out ca.key
-openssl req -new -x509 -days 36500 -key ca.key -out ca.crt -subj "/CN=bing.com"
-
-# Step 4: Prompt user for input
+# Step 2: Certbot domain setup
 echo ""
-read -p "Enter a port (or press enter for a random port): " port
+echo "Hysteria requires a valid SSL certificate."
+echo "Ensure your domain's DNS A record points to this server's IP address."
+echo "Also ensure Port 80 is open to obtain the Let's Encrypt certificate if you don't already have one."
+read -r -p "Enter your domain name (e.g., vpn.example.com): " domain
+if [ -z "$domain" ]; then
+    echo "Domain is required. Exiting."
+    exit 1
+fi
+
+# Check for existing certificates in common locations dynamically
+cert_path=""
+key_path=""
+
+echo "Searching for existing certificates for $domain..."
+
+# Explicit paths where cert and key might be in different directories or named exactly as the domain
+explicit_certs=(
+    "/etc/letsencrypt/live/$domain/fullchain.pem"
+    "/etc/ssl/certs/$domain.crt"
+    "/etc/ssl/certs/$domain.pem"
+    "/etc/nginx/ssl/$domain.crt"
+    "/root/cert/$domain.crt"
+    "/root/certs/$domain.crt"
+    "/root/cert/$domain/fullchain.pem"
+)
+explicit_keys=(
+    "/etc/letsencrypt/live/$domain/privkey.pem"
+    "/etc/ssl/private/$domain.key"
+    "/etc/ssl/private/$domain.key"
+    "/etc/nginx/ssl/$domain.key"
+    "/root/cert/$domain.key"
+    "/root/certs/$domain.key"
+    "/root/cert/$domain/privkey.pem"
+)
+
+for i in "${!explicit_certs[@]}"; do
+    if [ -f "${explicit_certs[$i]}" ] && [ -f "${explicit_keys[$i]}" ]; then
+        cert_path="${explicit_certs[$i]}"
+        key_path="${explicit_keys[$i]}"
+        break
+    fi
+done
+
+# If not found in explicit paths, search dynamically for a directory matching the domain
+if [ -z "$cert_path" ] || [ -z "$key_path" ]; then
+    # find directories up to 5 levels deep in common root locations
+    search_dirs=$(find /etc /root /home -maxdepth 5 -type d \( -name "$domain" -o -name "${domain}_ecc" \) 2>/dev/null)
+    
+    for dir in $search_dirs; do
+        possible_c=( "fullchain.pem" "fullchain.cer" "$domain.cer" "$domain.crt" "cert.pem" "cert.crt" )
+        possible_k=( "privkey.pem" "$domain.key" "private.key" "key.pem" "cert.key" )
+        
+        found_c=""
+        found_k=""
+        
+        for c in "${possible_c[@]}"; do
+            if [ -f "$dir/$c" ]; then
+                found_c="$dir/$c"
+                break
+            fi
+        done
+        
+        for k in "${possible_k[@]}"; do
+            if [ -f "$dir/$k" ]; then
+                found_k="$dir/$k"
+                break
+            fi
+        done
+        
+        if [ -n "$found_c" ] && [ -n "$found_k" ]; then
+            cert_path="$found_c"
+            key_path="$found_k"
+            break
+        fi
+    done
+fi
+
+if [ -n "$cert_path" ] && [ -n "$key_path" ]; then
+    echo "Found existing certificate for $domain at $cert_path"
+else
+    echo "No existing certificate found. Proceeding to generate one..."
+    read -r -p "Enter your email address for Let's Encrypt renewal notices (optional, press enter to skip): " email
+    if [ -z "$email" ]; then
+        certbot_email_args=("--register-unsafely-without-email")
+    else
+        certbot_email_args=("-m" "$email")
+    fi
+
+    # Obtain certificate
+    echo "Running Certbot to obtain certificates..."
+    certbot certonly --standalone -d "$domain" --agree-tos "${certbot_email_args[@]}" --non-interactive
+
+    if [ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/$domain/privkey.pem" ]; then
+        cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+        key_path="/etc/letsencrypt/live/$domain/privkey.pem"
+    else
+        echo "Certificate generation failed! Please check if your domain points to this IP and port 80 is open."
+        exit 1
+    fi
+fi
+
+# Step 3: Prompt user for input
+echo ""
+read -r -p "Enter a port (or press enter for a random port): " port
 [ -z "$port" ] && port=$((RANDOM + 10000))
 
 echo ""
-read -p "Enter a password (or press enter for a random password): " password
+read -r -p "Enter a password (or press enter for a random password): " password
 [ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 16 | head -n 1)
 
-# Create new config.yaml template based on your requirement
+# Step 4: Create configuration
+mkdir -p /etc/hysteria
 config_yaml="listen: :$port
 tls:
-  cert: /root/hysteria/ca.crt
-  key: /root/hysteria/ca.key
+  cert: $cert_path
+  key: $key_path
 auth:
   type: password
-  password: $password
-quic:
-  initStreamReceiveWindow: 8388608
-  maxStreamReceiveWindow: 8388608
-  initConnReceiveWindow: 20971520
-  maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 60s
-  maxIncomingStreams: 1024
-  disablePathMTUDiscovery: false
-bandwidth:
-  up: 1 gbps
-  down: 1 gbps
-ignoreClientBandwidth: false
-disableUDP: false
-udpIdleTimeout: 60s
-resolver:
-  type: udp
-  tcp:
-    addr: 8.8.8.8:53
-    timeout: 4s
-  udp:
-    addr: 8.8.4.4:53
-    timeout: 4s
-  tls:
-    addr: 1.1.1.1:853
-    timeout: 10s
-    sni: cloudflare-dns.com
-    insecure: false
-  https:
-    addr: 1.1.1.1:443
-    timeout: 10s
-    sni: cloudflare-dns.com
-    insecure: false"
-    
-echo "$config_yaml" > config.yaml
+  password: $password"
 
-# Step 5: Run the binary and check the log
-/root/hysteria/$BINARY_NAME server -c /root/hysteria/config.yaml > hysteria.log 2>&1 &
+echo "$config_yaml" > /etc/hysteria/config.yaml
 
-# Step 6: Create a system service
-cat > /etc/systemd/system/hysteria.service <<EOL
-[Unit]
-Description=Hysteria VPN Service
-After=network.target nss-lookup.target
-
+# Step 5: Override systemd user to root to access certs
+echo "Configuring systemd service..."
+mkdir -p /etc/systemd/system/hysteria-server.service.d/
+cat > /etc/systemd/system/hysteria-server.service.d/override.conf <<EOL
 [Service]
 User=root
-WorkingDirectory=/root/hysteria
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-ExecStart=/root/hysteria/$BINARY_NAME server -c /root/hysteria/config.yaml
-ExecReload=/bin/kill -HUP \$MAINPID
-Restart=always
-RestartSec=5
-LimitNOFILE=infinity
-
-[Install]
-WantedBy=multi-user.target
+Group=root
 EOL
 
 systemctl daemon-reload
-systemctl enable hysteria > /dev/null 2>&1
-systemctl start hysteria
+systemctl enable hysteria-server > /dev/null 2>&1
+systemctl restart hysteria-server
 
-# Step 7: Generate and print client config files
-PUBLIC_IP=$(curl -s https://api.ipify.org)
+# Step 6: Generate and print client config files
+echo ""
+echo "======================================"
+echo "Hysteria 2 Installation Complete!"
+echo "======================================"
 echo ""
 echo "v2rayN client config:"
 echo ""
-v2rayN_config="server: $PUBLIC_IP:$port
+v2rayN_config="server: $domain:$port
 auth: $password
-transport:
-  type: udp
 tls:
-  sni: bing.com
-  insecure: true
-bandwidth:
-  up: 100 mbps
-  down: 100 mbps
-quic:
-  initStreamReceiveWindow: 8388608
-  maxStreamReceiveWindow: 8388608
-  initConnReceiveWindow: 20971520
-  maxConnReceiveWindow: 20971520
-  maxIdleTimeout: 60s
-  keepAlivePeriod: 60s
-  disablePathMTUDiscovery: false
+  sni: $domain
+  insecure: false
 fastOpen: true
-lazy: true
 socks5:
   listen: 127.0.0.1:10808
 http:
   listen: 127.0.0.1:10809"
-echo ""
 echo "$v2rayN_config"
 echo ""
 echo "NekoBox/NekoRay URL:"
 echo ""
-nekobox_url="hysteria2://$password@$PUBLIC_IP:$port/?insecure=1&sni=bing.com"
-echo ""
+nekobox_url="hysteria2://$password@$domain:$port/?insecure=0&sni=$domain#Hysteria2-$((RANDOM % 9000 + 1000))"
 echo "$nekobox_url"
 echo ""
