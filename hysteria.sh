@@ -57,6 +57,8 @@ if [ -d "/etc/hysteria" ] && [ -f "/etc/hysteria/config.yaml" ]; then
     echo ""
     echo "4) Uninstall"
     echo ""
+    echo "5) Show current link"
+    echo ""
     read -r -p "Enter your choice: " choice
     case $choice in
         1)
@@ -71,8 +73,9 @@ if [ -d "/etc/hysteria" ] && [ -f "/etc/hysteria/config.yaml" ]; then
             # Modify
             # Read current settings from config
             current_port=$(grep -oP 'listen: :\K\d+' /etc/hysteria/config.yaml || echo "443")
-            current_password=$(grep -m 1 'password:' /etc/hysteria/config.yaml | awk '{print $2}' || echo "random")
-            current_domain=$(grep -oP 'cert: /etc/letsencrypt/live/\K[^/]+' /etc/hysteria/config.yaml || echo "example.com")
+            current_password=$(awk '/^auth:/{f=1; next} f && /^[^ ]/{f=0} f && /password:/{print $2; exit}' /etc/hysteria/config.yaml)
+            current_domain=$(grep -oP 'cert: .*/live/\K[^/]+' /etc/hysteria/config.yaml || echo "example.com")
+            current_obfs_password=$(awk '/^obfs:/{f=1; next} f && /^[^ ]/{f=0} f && /password:/{print $2; exit}' /etc/hysteria/config.yaml)
             
             echo ""
             read -r -p "Enter a new port (or press enter to keep the current one [$current_port]): " new_port
@@ -81,11 +84,98 @@ if [ -d "/etc/hysteria" ] && [ -f "/etc/hysteria/config.yaml" ]; then
             read -r -p "Enter a new password (or press enter to keep the current one [$current_password]): " new_password
             [ -z "$new_password" ] && new_password=$current_password
             echo ""
-        
-            # Update the port and password in config.yaml
-            sed -i "s/listen: :${current_port}/listen: :${new_port}/" /etc/hysteria/config.yaml
-            sed -i "s/password: ${current_password}/password: ${new_password}/" /etc/hysteria/config.yaml
-            
+
+            # Obfs modification
+            if [ -n "$current_obfs_password" ]; then
+                echo "Obfuscation (Salamander) is currently ENABLED (password: $current_obfs_password)"
+                read -r -p "Keep obfs enabled? (y/n, default: y): " keep_obfs
+                if [ "$keep_obfs" = "n" ] || [ "$keep_obfs" = "N" ]; then
+                    new_obfs_password=""
+                else
+                    read -r -p "Enter a new obfs password (or press enter to keep the current one): " new_obfs_password
+                    [ -z "$new_obfs_password" ] && new_obfs_password=$current_obfs_password
+                fi
+            else
+                echo "Obfuscation (Salamander) is currently DISABLED"
+                read -r -p "Enable obfs? (y/n, default: n): " enable_obfs
+                if [ "$enable_obfs" = "y" ] || [ "$enable_obfs" = "Y" ]; then
+                    read -r -p "Enter an obfs password (or press enter for a random one): " new_obfs_password
+                    [ -z "$new_obfs_password" ] && new_obfs_password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 16 | head -n 1)
+                else
+                    new_obfs_password=""
+                fi
+            fi
+            echo ""
+
+            # Parse current routing configuration
+            current_routing="2"
+            if grep -q "mode: 4" /etc/hysteria/config.yaml && ! grep -q "mode: 46" /etc/hysteria/config.yaml; then
+                current_routing="3"
+            elif ! grep -q "mode:" /etc/hysteria/config.yaml; then
+                current_routing="1"
+            fi
+
+            echo ""
+            echo "Select outbound routing mode:"
+            echo "1) Default (Dual-stack auto)"
+            echo "2) Prefer IPv4 (Recommended for VPS with broken/slow IPv6)"
+            echo "3) Force IPv4 only"
+            read -r -p "Enter choice [1-3, default: $current_routing]: " route_choice
+            [ -z "$route_choice" ] && route_choice=$current_routing
+
+            resolver_yaml=""
+            outbounds_yaml=""
+
+            if [ "$route_choice" = "2" ]; then
+                resolver_yaml="
+resolver:
+  type: udp
+  udp:
+    addr: 1.1.1.1:53"
+                outbounds_yaml="
+outbounds:
+  - name: direct
+    type: direct
+    direct:
+      mode: 46"
+            elif [ "$route_choice" = "3" ]; then
+                resolver_yaml="
+resolver:
+  type: udp
+  udp:
+    addr: 1.1.1.1:53"
+                outbounds_yaml="
+outbounds:
+  - name: direct
+    type: direct
+    direct:
+      mode: 4"
+            fi
+
+            # Rebuild config.yaml
+            current_cert=$(grep 'cert:' /etc/hysteria/config.yaml | awk '{print $2}')
+            current_key=$(grep 'key:' /etc/hysteria/config.yaml | awk '{print $2}')
+
+            config_yaml="listen: :$new_port
+tls:
+  cert: $current_cert
+  key: $current_key
+auth:
+  type: password
+  password: $new_password"
+
+            if [ -n "$new_obfs_password" ]; then
+                config_yaml="$config_yaml
+obfs:
+  type: salamander
+  salamander:
+    password: $new_obfs_password"
+            fi
+
+            config_yaml="$config_yaml$resolver_yaml$outbounds_yaml"
+
+            echo "$config_yaml" > /etc/hysteria/config.yaml
+
             # Restart the hysteria service
             systemctl restart hysteria-server
 
@@ -101,11 +191,31 @@ socks5:
   listen: 127.0.0.1:10808
 http:
   listen: 127.0.0.1:10809"
+            if [ -n "$new_obfs_password" ]; then
+                v2rayN_config="server: $current_domain:$new_port
+auth: $new_password
+obfs:
+  type: salamander
+  salamander:
+    password: $new_obfs_password
+tls:
+  sni: $current_domain
+  insecure: false
+fastOpen: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
+            fi
             echo "$v2rayN_config"
             echo ""
 
             echo "NekoBox/NekoRay URL:"
-            nekobox_url="hysteria2://$new_password@$current_domain:$new_port/?insecure=0&sni=$current_domain#Hysteria2-$((RANDOM % 9000 + 1000))"
+            if [ -n "$new_obfs_password" ]; then
+                nekobox_url="hysteria2://$new_password@$current_domain:$new_port/?insecure=0&sni=$current_domain&obfs=salamander&obfs-password=$new_obfs_password#Hysteria2-$((RANDOM % 9000 + 1000))"
+            else
+                nekobox_url="hysteria2://$new_password@$current_domain:$new_port/?insecure=0&sni=$current_domain#Hysteria2-$((RANDOM % 9000 + 1000))"
+            fi
             echo "$nekobox_url"
             echo ""
             exit 0
@@ -126,6 +236,54 @@ http:
             rm -rf /etc/systemd/system/hysteria-server.service.d
             systemctl daemon-reload
             echo "Hysteria uninstalled successfully!"
+            echo ""
+            exit 0
+            ;;
+        5)
+            # Show current link
+            current_port=$(grep -oP 'listen: :\K\d+' /etc/hysteria/config.yaml || echo "443")
+            current_password=$(awk '/^auth:/{f=1; next} f && /^[^ ]/{f=0} f && /password:/{print $2; exit}' /etc/hysteria/config.yaml)
+            current_domain=$(grep -oP 'cert: .*/live/\K[^/]+' /etc/hysteria/config.yaml || echo "example.com")
+            current_obfs_password=$(awk '/^obfs:/{f=1; next} f && /^[^ ]/{f=0} f && /password:/{print $2; exit}' /etc/hysteria/config.yaml)
+
+            echo ""
+            echo "v2rayN client config:"
+            v2rayN_config="server: $current_domain:$current_port
+auth: $current_password
+tls:
+  sni: $current_domain
+  insecure: false
+fastOpen: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
+            if [ -n "$current_obfs_password" ]; then
+                v2rayN_config="server: $current_domain:$current_port
+auth: $current_password
+obfs:
+  type: salamander
+  salamander:
+    password: $current_obfs_password
+tls:
+  sni: $current_domain
+  insecure: false
+fastOpen: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
+            fi
+            echo "$v2rayN_config"
+            echo ""
+
+            echo "NekoBox/NekoRay URL:"
+            if [ -n "$current_obfs_password" ]; then
+                nekobox_url="hysteria2://$current_password@$current_domain:$current_port/?insecure=0&sni=$current_domain&obfs=salamander&obfs-password=$current_obfs_password#Hysteria2-$((RANDOM % 9000 + 1000))"
+            else
+                nekobox_url="hysteria2://$current_password@$current_domain:$current_port/?insecure=0&sni=$current_domain#Hysteria2-$((RANDOM % 9000 + 1000))"
+            fi
+            echo "$nekobox_url"
             echo ""
             exit 0
             ;;
@@ -255,6 +413,53 @@ echo ""
 read -r -p "Enter a password (or press enter for a random password): " password
 [ -z "$password" ] && password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 16 | head -n 1)
 
+# Step 3.5: Obfuscation (Salamander)
+echo ""
+read -r -p "Enable Salamander obfuscation? (y/n, default: n): " enable_obfs
+obfs_password=""
+if [ "$enable_obfs" = "y" ] || [ "$enable_obfs" = "Y" ]; then
+    read -r -p "Enter an obfs password (or press enter for a random one): " obfs_password
+    [ -z "$obfs_password" ] && obfs_password=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 16 | head -n 1)
+fi
+
+# Step 3.6: Outbound Routing Mode
+echo ""
+echo "Select outbound routing mode:"
+echo "1) Default (Dual-stack auto)"
+echo "2) Prefer IPv4 (Recommended for VPS with broken/slow IPv6) [Default]"
+echo "3) Force IPv4 only"
+read -r -p "Enter choice [1-3, default: 2]: " route_choice
+[ -z "$route_choice" ] && route_choice="2"
+
+resolver_yaml=""
+outbounds_yaml=""
+
+if [ "$route_choice" = "2" ]; then
+    resolver_yaml="
+resolver:
+  type: udp
+  udp:
+    addr: 1.1.1.1:53"
+    outbounds_yaml="
+outbounds:
+  - name: direct
+    type: direct
+    direct:
+      mode: 46"
+elif [ "$route_choice" = "3" ]; then
+    resolver_yaml="
+resolver:
+  type: udp
+  udp:
+    addr: 1.1.1.1:53"
+    outbounds_yaml="
+outbounds:
+  - name: direct
+    type: direct
+    direct:
+      mode: 4"
+fi
+
 # Step 4: Create configuration
 mkdir -p /etc/hysteria
 config_yaml="listen: :$port
@@ -264,6 +469,16 @@ tls:
 auth:
   type: password
   password: $password"
+
+if [ -n "$obfs_password" ]; then
+    config_yaml="$config_yaml
+obfs:
+  type: salamander
+  salamander:
+    password: $obfs_password"
+fi
+
+config_yaml="$config_yaml$resolver_yaml$outbounds_yaml"
 
 echo "$config_yaml" > /etc/hysteria/config.yaml
 
@@ -298,10 +513,30 @@ socks5:
   listen: 127.0.0.1:10808
 http:
   listen: 127.0.0.1:10809"
+if [ -n "$obfs_password" ]; then
+    v2rayN_config="server: $domain:$port
+auth: $password
+obfs:
+  type: salamander
+  salamander:
+    password: $obfs_password
+tls:
+  sni: $domain
+  insecure: false
+fastOpen: true
+socks5:
+  listen: 127.0.0.1:10808
+http:
+  listen: 127.0.0.1:10809"
+fi
 echo "$v2rayN_config"
 echo ""
 echo "NekoBox/NekoRay URL:"
 echo ""
-nekobox_url="hysteria2://$password@$domain:$port/?insecure=0&sni=$domain#Hysteria2-$((RANDOM % 9000 + 1000))"
+if [ -n "$obfs_password" ]; then
+    nekobox_url="hysteria2://$password@$domain:$port/?insecure=0&sni=$domain&obfs=salamander&obfs-password=$obfs_password#Hysteria2-$((RANDOM % 9000 + 1000))"
+else
+    nekobox_url="hysteria2://$password@$domain:$port/?insecure=0&sni=$domain#Hysteria2-$((RANDOM % 9000 + 1000))"
+fi
 echo "$nekobox_url"
 echo ""
